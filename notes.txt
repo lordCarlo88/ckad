@@ -1,0 +1,925 @@
+Nodes:
+ - a node is a machine. Physical or virtual in which kube is installed. 
+ - a node is a worker machine and that is where containers will be lauched by kubernetes
+ - aka minions in the past
+ - if the node fails, 
+	- application goes down, 
+	- thats why you need more than one node. 
+	- having multiple nodes helps share load 
+cluster:
+	- is a group of nodes 
+	- nodes can be configured as master or worker 
+	- master node within a container can be configured to direct workload of a failed node into another node within the same cluster
+
+when installing kube into a system, you are actually installing the following components
+	- API server 
+		- acts as front end for kubernetes
+		- users, management devices. etc
+	- etcd service
+		- key value store
+	- kubelet service
+		- agent that runs on each node in the cluster. 
+		- agent is responsible for making sure the containers run on the nodes as expected
+	- container runtime
+		- underlying software used to run containers (docker)
+	- controller
+		- brain behind orchestration 
+		- responsible for noticing when endpoints go down 
+	- scheduler
+		- responsible for distributing work or containers accorss multiple nodes 
+		- looks for newly created containers and assigns them to ndoes 
+		
+		
+alias k=kubectl
+complete -o default -F __start_kubectl k
+		
+
+
+		
+pod-definition.yaml
+apiVersion: v1
+kind: pod
+metadata:
+	name: myapp-pod
+	label:frontend
+spec:
+	containers:
+		name: nginx-container
+		image: nginx
+
+## to run a pod, use the command "kubectl run <pod name> --image=<image name>"
+## to edit a pod's yaml, use the comnand "kubectl edit pod <pod name>"
+
+replicaset-definition.yaml
+apiVersion: apps/v1
+kind: replicaset
+metadata:
+	name: myapp-replicaset
+	labels: 
+		app: myapp
+		type: front-end
+spec:
+	template:
+		metadata:
+			name: myapp-pod
+			labels:
+				app: myapp
+				type: front-end
+		spec:
+			containers:
+				name: nginx-container
+				image: nginx
+	replicas: 3
+	selector:
+		matchLabels:
+			type: front-end  ##must match the label in the metadata of the template section found within the spec of the repicaset-definition.yaml
+	
+## to create a replicaset, use the command "kubectl create -f <name of the replicaset yaml file>"
+## to see the created replicaset, use the command "kubectl get replicaset"
+## then run the ged pods commands to verify the creation of the pod replicas stated in the "replicas" definition of the replicaset-definition.yaml 
+	
+scaling applications
+
+replicaset-definition.yaml
+apiVersion: apps/v1
+kind: replicaset
+metadata:
+	name: myapp-replicaset
+	labels: 
+		app: myapp
+		type: front-end
+spec:
+	template:
+		metadata:
+			name: myapp-pod
+			labels:
+				app: myapp
+				type: front-end
+		spec:
+			containers:
+				name: nginx-container
+				image: nginx
+	replicas: 3  ## is we want to scale the application to have more than 3 replicas, change this value. 
+	selector:
+		matchLabels:
+			type: front-end
+			
+then, run the "kubectl replace -f replicaset-definition.yaml" command to replace the existing replicaset-definition.yaml file. 
+
+the easier way to do it is to run the "kubectl scale --replicas=6 -f replicaset-definition.yaml" or "kubectl scale --relicas=6 replicaset <name of replicaset>"
+(using this method will not change the replicaset-definition.yaml file. it will only scale the replicas to the amount specified in the command. 
+
+Deployment object
+
+deployment-definition.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+	name: myapp-deployment
+	labels: 
+		app: myapp
+		type: front-end
+spec:
+	template:
+		metadata:
+			name: myapp-pod
+			labels:
+				app: myapp
+				type: front-end
+		spec:
+			containers:
+				name: nginx-container
+				image: nginx
+	replicas: 3  ## is we want to scale the application to have more than 3 replicas, change this value. 
+	selector:
+		matchLabels:
+			type: front-end
+			
+## once a deployment file is ready, run the command "kubectl create -f <name of deployment yaml file>"
+## verify that the deployment has been created by using the command "kubectl get deployments"
+## deployment automatically creates a new replicaset so when you run the "kubectl get replicaset" command, you will see a new replicaset in the name of the deployment
+## the replicaset automatically creates pods, so when you run the command "kubectl get pods" you will see newly created pods with the same name as the deployment and replicasets. 
+
+
+namesapce
+
+containers>pods>replicasets>deployments>nodes>namesapce>cluster
+
+## you can have multiple environments within the same cluster using different resources by putting them in different namespaces
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+	name: myapp-pod
+	namespace: dev (<-- add a namespace definition in the metadata of a pod to designate which namespace that pod will be in.
+	labels:
+		app: myapp
+		type: front-end
+spec:
+	containers:
+		name: nginx-container
+		image: nginx
+		
+## create a namespace by using a namespace definition file. 
+
+namespace-dev.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+	name: dev (<---- this is where you name the namespace. 
+	
+## then run the command "kubectl create -f <insert namespace file here>"
+## or you can just run the command "kubectl create namespace <name of the namespace you want to create>"
+## to switch between namespaces, you can run the command "kubectl config set-context --current --namesapce=<the namespace you want to switch to>"
+## to view all pods, replicasets, deployments use the command "kubectl get <whatever kube object you want to look at> --all-namespaces"
+
+Resource Quota
+
+## used to limit resources in a given namespace.
+
+compute-quota.yaml 
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+	name: compute-quota
+	namespace: dev (<-- the namespace you want this resource quota to apply to. 
+spec:
+	hard:
+		pods: "10"
+		requests.cpu: "4"
+		requests.memory: 5Gi
+		limits.cpu: "10"
+		limits.memory: 10Gi
+		
+## once resource quota file is ready, use the command "kubectl create -f <name of ResourceQuota file>"
+
+Certification Tip: Imperative Commands
+
+## While you would be working mostly the declarative way - using definition files, imperative commands can help in getting one time tasks done quickly, as well as generate a definition template easily. This would help save considerable amount of time during your exams.
+
+## Before we begin, familiarize with the two options that can come in handy while working with the below commands:
+
+--dry-run: By default as soon as the command is run, the resource will be created. If you simply want to test your command , use the --dry-run=client option. This will not create the resource, instead, tell you whether the resource can be created and if your command is right.
+
+-o yaml: This will output the resource definition in YAML format on screen.
+
+
+
+##Use the above two in combination to generate a resource definition file quickly, that you can then modify and create resources as required, instead of creating the files from scratch.
+
+
+
+POD
+Create an NGINX Pod:
+
+kubectl run nginx --image=nginx
+
+
+
+Generate POD Manifest YAML file (-o yaml). Don't create it(--dry-run):
+
+kubectl run nginx --image=nginx --dry-run=client -o yaml
+
+
+
+Deployment
+Create a deployment:
+
+kubectl create deployment --image=nginx nginx
+
+
+
+Generate Deployment YAML file (-o yaml). Don't create it(--dry-run)
+
+kubectl create deployment --image=nginx nginx --dry-run -o yaml
+
+
+
+Generate Deployment with 4 Replicas
+
+kubectl create deployment nginx --image=nginx --replicas=4
+
+
+
+You can also scale a deployment using the kubectl scale command.
+
+kubectl scale deployment nginx --replicas=4
+
+
+
+Another way to do this is to save the YAML definition to a file and modify
+
+kubectl create deployment nginx --image=nginx--dry-run=client -o yaml > nginx-deployment.yaml
+
+
+
+You can then update the YAML file with the replicas or any other field before creating the deployment.
+
+
+
+Service
+Create a Service named redis-service of type ClusterIP to expose pod redis on port 6379
+
+kubectl expose pod redis --port=6379 --name redis-service --dry-run=client -o yaml
+
+(This will automatically use the pod's labels as selectors)
+
+Or
+
+kubectl create service clusterip redis --tcp=6379:6379 --dry-run=client -o yaml (This will not use the pods labels as selectors, instead it will assume selectors as app=redis. You cannot pass in selectors as an option. So it does not work very well if your pod has a different label set. So generate the file and modify the selectors before creating the service)
+
+
+
+Create a Service named nginx of type NodePort to expose pod nginx's port 80 on port 30080 on the nodes:
+
+kubectl expose pod nginx --port=80 --name nginx-service --type=NodePort --dry-run=client -o yaml
+
+(This will automatically use the pod's labels as selectors, but you cannot specify the node port. You have to generate a definition file and then add the node port in manually before creating the service with the pod.)
+
+Or
+
+kubectl create service nodeport nginx --tcp=80:80 --node-port=30080 --dry-run=client -o yaml
+
+(This will not use the pods labels as selectors)
+
+Both the above commands have their own challenges. While one of it cannot accept a selector the other cannot accept a node port. I would recommend going with the `kubectl expose` command. If you need to specify a node port, generate a definition file using the same command and manually input the nodeport before creating the service.
+
+Once you are satisfied with how the definition looks, run the same command without the --dry-run -o yaml
+
+
+Commands and arguements in docker
+
+Unlike virtual machines, containers are not meant to host an operating system. Instead, containers run a specific task or process. once the task is complete, the container exits 
+
+Dockerfiles have a CMD (command) that it uses to execute a command. 
+
+you can edit the dockerfile and specify a new command in a shell form or a json array format. 
+
+CMD command parameter => CMD sleep 5
+
+CMD ["command","parameter"] => CMD ["sleep","5"]
+
+Entrypoint
+
+Specifies a program when the container starts. 
+
+ENTRYPOINT ["sleep"]
+
+the CMD instruction will be appended to the ENTRYPOINT instruction. 
+
+you can override the entrypoint instruction by declaring a --entrypoint flag when using the "docker run" command
+
+ex program called ubuntu-sleeper: 
+Dockerfile
+
+FROM Ubuntu
+ENTRYPOINT ["sleep"]
+CMD ["5"]
+
+docker run ubuntu-sleeper --entrypoint {{another program other than "sleep"}} ubuntu sleeper {{parameter to replace the CMD line}}
+
+
+Commands and arguements in a Kube pod
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	contianers:
+		- name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] (<-- overides the ENTRYPOINT instruction. 
+			args: ["10"] (<-- overides the CMD instruction in the dockerfile
+
+
+Environment Variables
+
+use the "env" property in the spec.container space
+env is an array
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			env: 
+				- name: color (<-- key
+				  value: green (<-- value
+
+You can also use configMaps and Secrets to set environment variables.
+
+ConfigMaps
+
+used to pass configuation data in the form of key-value pairs in kubernetes. 
+
+there are 2 ohases to use configMaps 
+
+1. create a config map
+2. inject it into the pod
+
+create a config map imperatively:
+	kubectl create configmap <config-name> --from-literal=<key>=<value>
+	
+	ex:
+	kubectl create configmap config-map --from-literal=APP_COLOR=blue
+	
+	You cam add additional key value pairs by adding more --from-literal commands
+	
+creating a configmap declaritively
+	create a kube file 
+	
+	apiVersion: v1
+	kind:ConfigMap
+	metadata: 
+		name: my-configmap
+	data: (<-- instead of "spec", we use "data"
+		APP-COLOR: blue
+		APP_MODE prod
+		
+	then run the command kubectl create -f {{whatever you named the yaml file}}
+
+configure configMap into a pod 
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			envFrom: (<-- property that allows you to pass in a config map 
+				- configMapRef:
+					- name: app-config (<-- this is where you put the name of the configMap.
+
+					
+You can inject configuration data into a pod by other means. 
+
+single env variable from a configMap
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			env: 
+				- 	name: APP_COLOR
+					configMapRef:
+						name: app-config
+						key: APP_COLOR
+
+volumes
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			volumes:
+				- name: app-config-volume
+				  configMap:
+					name: app-config
+					
+Secrets
+
+2 steps when using kubenetes secrets. 
+
+1 create a secret
+2 inject it into a pod
+
+2 ways of creating a secret. 
+
+imparitive way
+
+kubectl create secret generic <secret name> --from-literal=<key>=<value>
+
+ex:
+
+kubectl create secret generic my-secret --from-literal=DB_Host=mysql --from-literal=DB_User=mysql --from-literal=DB_Password=mysql 
+
+you can have more than one by stating the --from-literal=<key>=<value> multiple times
+
+you can also pull secrets from a file by using the --from-file<path to file> command. 
+
+kubectl create secret generic <secret name> --from-file=<path to file>
+
+ex:
+kubectl create secret generic <my-secret> --from-file=/root/myDir/app_secret.properties
+
+
+declaritive way
+
+create a secret definition file 
+secret-data.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+	name: my-secret
+data:
+	DB_Host: mysql (<-- specify each secret in a key vaue pair
+	DB_User: root
+	DB_Passwod: password
+	
+When using the declaritive way to create secret, YOU MUST STORE THE VALUES IN A HASHED FORM! 
+how to convert:
+echo -n 'mysql' | base64 (<-- linux command to encode the secret. the subsequent result is what you will put in the secret definition file. 
+then run the command kubectl create -f <secret definition yaml file>
+
+to view secrets run kubectl get secrets. 
+
+inject secret in a pod:
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			envFrom: (<-- property that allows you to pass in a secret
+				- secretRef: (<-- list.
+					name: my-secret (<-- specify the name of the secret we created above. 
+
+You can also inject a single secret as an environment variable 
+ex:
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			env: (<-- property that allows you to pass in a secret
+				- name: DB_Password
+				  valueFrom:
+					secretKeyRef:
+						name: my-secret (<-- name givin in the metadata of the secret.yaml file
+						key: DB_Password (<-- the data you want to reference in the secret.yaml file.
+						
+you can also inject secrets as part of a volume
+if you mount the secret as a volume in the pod, a file will be generated for each secret in the secret definition yaml file. since we have 3 secrets, 3 files will be generated. 
+
+ex:
+spec:
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			volumes: (<--volumes with an "s"
+				- name: app-secret-volume
+				  secret:
+					secretName: my-secret(<-- the name in the metadata field of the secret.yaml file
+
+
+Security context
+
+Docker security can be configured in kubernetes as well
+
+you can configure security settings at the pod or container level. 
+if the securityContext is configured at the pod level, it will carry over to all the containers within that pod. 
+if the securityContext is configured at the container AND pod level, the configuration for the container will override the configuration for the pod. 
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			securityCOntext: (<-- this is where you can set the security config at the container level
+				runAsUser: 1000 (<-- set the user
+				capabilities:(<-- set the capabilities 
+					add: ["MAC_ADMIN","NET_ADMIN"] (<--you can add capabilities to the user here. 
+					drop: ["MAC_ADMIN"] (<--you can drop capabilities to the user here. 
+			command: ["sleep2.0"] 
+			args: ["10"] 
+			envFrom: 
+				- configMapRef:
+					- name: app-config 
+					
+
+Service Accounts
+
+2 types of accounts in kube a user and a service account 
+
+service account is an account used by an application to perform funtions within the cluster.
+
+to create a service account: kubectl create service account <service account name>
+
+this will create a service account token which will be used by the external application while authenticating to the kubernetes api 
+
+it then stored the token inside a secret object. 
+
+the secret object is then linked to the service account. 
+
+this token can be used as an auth bearer while making rest calls to the kubernetes api.
+ for example. when using a curl command, you can provide the bearer token as an authorization header while making a rest call to the kubernetes api.
+ 
+in the case that a third party application is hosted on the kubernetes cluster itself, you can mount the kubernetes secret as a volume inside the pod hosting the third party application. 
+
+for every namespace in kubernetes, a "default service account is automatically created. each namespace has its own default service account. 
+
+the default service account that is created automatically in the namespace is very uch restricted. inorder to use a different service account, you must declare it in the soec section of the pod definition yaml file.
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+	serviceAccountName: my-service-account (<-- this is where you declare the service account. 
+	
+	
+**you must delete the pod and redeploy with the new service account in order to use the new service account.**
+ 
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+	automountServiceAccountToken: false (<-- you can explicitly NOT mount the default service account token by stating it this way. 
+	
+	
+Resource Requirements
+
+each node has a CPU, Memory, and disk resource available. every pod consumes a set of resources. whenever a pod is placed on a node, it consumes resources available to that node. 
+it is the job of the kuberneted scheduler to decide which node a pod goes to. the scheduler takes into consideration the resources needed by a pod and those available in a node. 
+if the node does not have sufficient resources, the scheduler avoids placing a pod on that node and placed the pod on a node with sufficient resources available. 
+if there is not enough resources available in a node, kubernetes holds back on deploying the pod. (you will see the pod in a pending state. 
+see logs for reason for pending state 
+
+by default, kubernetes assumes that a pod or a container within a pod requires .5 cpu and 256 mebibyte(Mi) of memory 
+if you know that your application reaquires more than this, you can specify it in the pod or deployment definition files.
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			ports:
+				- containerPort: 8080
+		resources:  (<-- this is where you specify the resource requirements if your application needs more than the default values. 
+			requests:
+				memory: "1Gi"
+				cpu: 1 (<-- one count of cpu is equivalent to 1 vCPU in aws, 1GCP Core, 1 Azure Core, 1 Hyperthread
+				
+
+cpu doesnt have to be expressed in multiples of .5. it can be as low as .1 which equals to 100m where m stands for milli. you can even go as low as 1m but not lower than that.
+you can request a higher number of CPUs for the container so long as the node is sufficiently funded. 
+
+with memory, you can specify 256 Mi (256 mebibyte) or specify the same value in memory like this "268435456". or use the suffic G or Gi for Gigabyte or Gibibyte. 
+
+1G = 1,000,000,000 bytes
+1M = 1,000,000 bytes
+1K = 1,000 bytes
+
+1Gi = 1,073,741,824 bytes
+1Mi = 1,048,576 bytes
+1Ki = 1,024 bytes
+
+when a container is running on a node, there is no limit to how much resources it can consume on a node. it can use as much resources as it requires which can suffocate the native processes on the node, or other containers within that node. 
+
+you can set a limit to the resources for each container within a pod by adding a limits annotation to the resources section in the pod definition file. 
+				
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			ports:
+				- containerPort: 8080
+		resources:  (<-- this is where you specify the resource requirements if your application needs more than the default values. 
+			requests:
+				memory: "1Gi"
+				cpu: 1 (<-- one count of cpu is equivalent to 1 vCPU in aws, 1GCP Core, 1 Azure Core, 1 Hyperthread
+			limits: (<-- set the limits here. 
+				memory: "2Gi"
+				cpu: 2
+
+when a pod tries to consume resources beyond its limits, in the case of CPU, kubernetes throtles the cpu so it does not go beyond its limit. a container cannot use more resources than its intended limit.
+however, in the case of memory, a pod can use more memory that its limit but the pod will be terminated if it constantly uses more memory than what is set in it's limit. 
+
+In the previous lecture, I said - "When a pod is created the containers are assigned a default CPU request of .5 and memory of 256Mi". For the POD to pick up those defaults you must have first set those as default values for request and limit by creating a LimitRange in that namespace.
+
+
+
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: mem-limit-range
+spec:
+  limits:
+  - default:
+      memory: 512Mi
+    defaultRequest:
+      memory: 256Mi
+    type: Container
+
+
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: cpu-limit-range
+spec:
+  limits:
+  - default:
+      cpu: 1
+    defaultRequest:
+      cpu: 0.5
+    type: Container
+
+
+Taints and tolertations:
+
+there are two things that decided if a pod can be lauched in a node. taints set up restricitons on which pods can be scheduled on a node. 
+in a 3 node (A,B,C)cluster serving 4 pods (1,2,3,4) to be deployed: if node A has dedicated resources for a specific to application found in Pod 1, we would want the pod to be deployed into that node. 
+
+we would place a taint on node A that would prevent all nodes from being deployed there, then add a tolerance to Pod 1 that would allow it to tolerate the taint in Node A. 
+
+taints are set on nodes and tollerance is set on pods. 
+
+how to taint nodes:
+
+use command kubectl taint nodes <node name> <key=value>:<taint-effect>
+
+taint-effect can be one of 3 behaviors
+
+NoSchedule - Pods will not be scheduled in the node 
+PreferNoSchedule - the system will "try" to avoid placing a pod on a node but its not guaranteed, 
+NoExecute - new pods will not be scheduled on the node and existing pods will be ejected from the node if they do not have tolerance for the node. 
+
+
+ex: kiubectl taint nodes nodeA app=blue:NoSchedule
+
+
+how to add tolerances to pods 
+
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			ports:
+				- containerPort: 8080
+		resources:  (<-- this is where you specify the resource requirements if your application needs more than the default values. 
+			requests:
+				memory: "1Gi"
+				cpu: 1 (<-- one count of cpu is equivalent to 1 vCPU in aws, 1GCP Core, 1 Azure Core, 1 Hyperthread
+			limits: (<-- set the limits here. 
+				memory: "2Gi"
+				cpu: 2
+	Tolerations: (<-- add a tolerance annotation in the spec section of the pod definition file 
+		-	key: "app" (<-- each property of the toleration must be in double quotes. 
+			operator: "Equal"
+			value: "blue"
+			effect: "NoSchedule"
+			
+When the pods are now created or updated with new tolerations, they are either not scheduled or ejected from a node based on the tolerations set in the pod definition file. 
+
+taints and tolerances are only meant to restrict pods from being placed in a speficif node. there are no restrictions for a pod with a tolerance for one node to be placed in a node withour any taints. 
+
+when the kubernetes cluster is first set up, a taint is placed on the master node to prevent any pod from being scheduled into the master node. 
+
+Node selectors:
+
+you can set limitations of pods so that they can only run on particular nodes 
+
+2 ways to do this. 
+
+first is to use node selectors (simple and easy)
+
+pod-definition.yaml
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			ports:
+				- containerPort: 8080
+		resources:  (<-- this is where you specify the resource requirements if your application needs more than the default values. 
+			requests:
+				memory: "1Gi"
+				cpu: 1 (<-- one count of cpu is equivalent to 1 vCPU in aws, 1GCP Core, 1 Azure Core, 1 Hyperthread
+			limits: (<-- set the limits here. 
+				memory: "2Gi"
+				cpu: 2
+	nodeSelector: (<-- add nodeSelector annotation in the spec section of the pod definition file. 
+		size: Large (<-- this "size: Large" annotation is a key value pair assigned as a label to the node you want this pod to be scheduled on. 
+		
+**the scheduler then uses these labels to assign pods to nodes which have matching labels. 
+**to use labels like this, you must have labeled your nodes prior to creating this pod. 
+
+to label a node, use the command kubectl label nodes <node-name> <label-key>=<label-value>
+
+ex: kubectl label nodes node-1 size=Large
+
+node selector limitations:
+
+node selectors pair pods with nodes based on one label. the scheduler cannot use node selectors to perform complex decision making tasks like "place this pod on a large OR medium node" or "place this pod on any node that is NOT small"
+
+
+node Affinity:
+
+is a feature that assured pods are hosted on particular nodes. provides advanced capabilities to limit pod placements on specific nodes. 
+node affinity adds a layer of complexity for more advanced operations.
+
+it will look like this:
+
+apiVersion: v1
+kind: Pod
+metadata: 
+	name: sleeper-pod
+	labels: sleep
+spec:
+	securityCOntext: (<-- this is where you can set the security config at the pod level
+		runAsUser: 1000 (<-- set the user
+	contianers:
+		- 	name: ubuntu-sleeper
+			image: ubuntu-sleeper
+			ports:
+				- containerPort: 8080
+		resources:  (<-- this is where you specify the resource requirements if your application needs more than the default values. 
+			requests:
+				memory: "1Gi"
+				cpu: 1 (<-- one count of cpu is equivalent to 1 vCPU in aws, 1GCP Core, 1 Azure Core, 1 Hyperthread
+	affinity:
+		nodeAffinity:
+			requiredDuringSchedulingIgnoredDuringExecusion: 
+				nodeSelectorTerms:
+					- matchExpressions:
+						- 	key: size
+							operator: In (<this operator (In) will assure that the pod will be hosted in any node which has the any of the values listed in the values section. 
+							values: (<-- node affinity can have more than one value which corresponds to labels that may be in different ndoes.
+								-	Large
+								-	Medium 
+						
+	affinity:
+			nodeAffinity:
+				requiredDuringSchedulingIgnoredDuringExecusion: 
+					nodeSelectorTerms:
+						- matchExpressions:
+							- 	key: size
+								operator: NotIn (<-- this operator (NotIn) will assure that the pod will be hosted in any node which does not have the values listed in the values section. 
+								values: 
+									-	Small
+									
+	affinity:
+			nodeAffinity:
+				requiredDuringSchedulingIgnoredDuringExecusion: 
+					nodeSelectorTerms:
+						- matchExpressions:
+							- 	key: size
+								operator: Exists (<-- this operator (Exists) will assure that the pod will be hosted in any node which has the label "size" regardless of the value of the label. 
+
+
+There are a number of other operators as well. check the documentation. 
+
+when using the Exists operator and none of the nodes have the label "size", will the pod terminate?
+
+this is answered by the long sentence-like property under the nodeAffinity annotation which happens to be the type of node affinity. 
+
+the type of node affinity defines the behavior of the scheduler with respect to node affinity and the stages of the lifecycle of the pod. there are currently two types of node affinity available 
+ 
+ requiredDuringSchedulingIgnoredDuringExecution
+ preferredDuringSchedulingIgnoredDuringExecution
+
+breaking this down further, there are two stages in the lifecycle of a pod when it comes to node affinity scheduling and execution. 
+
+	duringScheduling (<-- state of a pod where it does not yet exist and is being created for the first time. 
+	required (<-- if the matching label is not found in a node, the pod will not be hosted anywhere and will not run.
+	preferred (<-- if the matching label is not found in a node, the scheduler will place the pod into any node.
+	
+	duringExecution (<-- state at which the pod has been running and a change has been made that affects node affinity.
+	Ignored (<-- pods will continue to run and any changed with affinity will not affect the pod 
+	
+	
